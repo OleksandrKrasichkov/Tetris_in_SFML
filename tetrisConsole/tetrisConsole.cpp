@@ -2,6 +2,8 @@
 #include <SFML/Graphics.hpp>
 
 void rotatePiece(int[4][4]);
+void lockPieceToBoard(int[4][4], int, int, int[20][10]);
+bool checkCollision(const int[4][4], int, int, const int[20][10]);
 
 int main()
 {
@@ -49,13 +51,9 @@ int main()
         grid.append(sf::Vertex({ startX + gridWidth, y }, gridColor));
     }
 
+    //create a grid, 0-nothing 1-block
+    int board[20][10] = { 0 };
 
-
-
-
-
-    //bottom of the grid
-    const float gridBottom = startY + gridHeight;
 
     //create a shape
     int piece[4][4] = {
@@ -71,24 +69,26 @@ int main()
 
     //grid position of a piece
     int pieceGridX = 3;
-    int pieceGridY = 0;
+    int pieceGridY = -4;
 
 
 
     //tracks time between frames
     sf::Clock clock;
 
-    //speed a block per second
-    float fallSpeed = 5 * cellSize;
+
 
     //drops a row every ? second
     float dropTimer = 0.0f;
     float dropInterval = 0.5f;
     float currentInterval = dropInterval;
-    float spedupInterval = 0.2f;
-    int maxRow = 0;
-    int maxLeftCol = 3;
-    int maxRightCol = 0;
+    float spedupInterval = 0.1f;
+
+    float sideTimer = 0.0f;
+    float sideInitialDelay = 0.18f;
+    float sideRepeatInterval = 0.07f;
+
+
 
     while (window.isOpen())
     {
@@ -101,15 +101,64 @@ int main()
         }
         else { currentInterval = dropInterval; }
 
+        bool leftPressed = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Numpad4);
+        bool rightPressed = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Numpad6);
+
+        if (leftPressed || rightPressed)
+        {
+            int nextX = pieceGridX;
+
+            if (sideTimer == 0.0f)
+            {
+                if (leftPressed) nextX--;
+                else nextX++;
+            }
+
+            sideTimer += frameTime;
+
+            if(sideTimer >= sideInitialDelay)
+            {
+                if (leftPressed) nextX--;
+                else nextX++;
+
+                sideTimer = sideInitialDelay - sideRepeatInterval;
+            }
+            if (!checkCollision(piece, nextX, pieceGridY, board))
+            {
+                pieceGridX = nextX;
+            }
+
+        }
+        else {
+            sideTimer = 0.0f;
+        }
 
 
-        
+
+        dropTimer += frameTime;
+
+
+
+        if (dropTimer >= currentInterval)
+        {
+            if (checkCollision(piece, pieceGridX, pieceGridY + 1, board))
+            {
+                lockPieceToBoard(piece, pieceGridX, pieceGridY, board);
+                pieceGridX = 3;
+                pieceGridY = -4;
+            }
+            else {
+                pieceGridY++;
+                dropTimer = 0.0f;
+            }
+
+        }
 
         //optional - smth(true) or nothing(false). PollEvent asks for an event from a queue of events windows created
         while (std::optional<sf::Event> event = window.pollEvent())
         {
             //check if that event is close(X) or esc is pressed
-            if ( ((*event).is<sf::Event::Closed>() ) || ((*event).is<sf::Event::KeyReleased>() && (*((*event).getIf<sf::Event::KeyReleased>())).code == sf::Keyboard::Key::Escape)) 
+            if (((*event).is<sf::Event::Closed>()) || ((*event).is<sf::Event::KeyReleased>() && (*((*event).getIf<sf::Event::KeyReleased>())).code == sf::Keyboard::Key::Escape))
             {
                 window.close();
             }
@@ -118,100 +167,38 @@ int main()
             if (event->is<sf::Event::KeyPressed>() && event->getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Z)
             {
                 rotatePiece(piece);
-            }
-
-            //move left right
-            if (event->is<sf::Event::KeyPressed>() && event->getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Numpad4)
-            {
-                pieceGridX--;
-            }
-            if (event->is<sf::Event::KeyPressed>() && event->getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Numpad6)
-            {
-                pieceGridX++;
-            }
-        }
-
-
-
-
-        dropTimer += frameTime;
-
-        if (dropTimer >= currentInterval)
-        {
-            pieceGridY++;
-            dropTimer = 0.0f;
-        }
-
-        maxRow = 0;
-        maxLeftCol = 3;
-        maxRightCol = 0;
-        //find the lowest row with 1
-        for (int r = 0; r < 4; ++r)
-        {
-            for (int c = 0; c < 4; ++c)
-            {
-                if (piece[r][c] == 1)
+                if (checkCollision(piece, pieceGridX, pieceGridY, board))
                 {
-                    maxRow = std::max(maxRow, r);
+                    for (int i = 0; i < 3; ++i) rotatePiece(piece);
                 }
             }
         }
-
-        if (pieceGridY + maxRow >= 20)
-        {
-            pieceGridY = 20 - maxRow - 1; // Clamp to bottom row
-        }
+               
 
 
-        //find the leftest column with 1
-        for (int r = 0; r < 4; ++r)
-        {
-            for (int c = 0; c < 4; ++c)
-            {
-                if (piece[r][c] == 1)
-                {
-                    maxLeftCol = std::min(maxLeftCol, c);
-                }
-            }
-        }
+        
 
-        if (pieceGridX + maxLeftCol < 0)
-        {
-            pieceGridX = 0 - maxLeftCol;
-        }
-        //find the rightest column with 1
-        for (int r = 0; r < 4; ++r)
-        {
-            for (int c = 0; c < 4; ++c)
-            {
-                if (piece[r][c] == 1)
-                {
-                    maxRightCol = std::max(maxRightCol, c);
-                }
-            }
-        }
-
-        if (pieceGridX + maxRightCol >= 10)
-        {
-            pieceGridX = 10 - maxRightCol - 1;
-        }
-
-
-        //move block
-       // piece.move(sf::Vector2f(0.0f, fallSpeed * frameTime));
-
-        //check if block passes the grid bottom
-       /* if (block.getPosition().y >= gridBottom)
-        {
-            block.setPosition(startPos);
-        }*/
-
+      
         //clear a screen with a color
         window.clear(sf::Color::Black);
 
         //window.draw(block);
 
         window.draw(grid);
+
+
+        for (int r = 0; r < 20; ++r)
+        {
+            for (int c = 0; c < 10; ++c)
+            {
+                if (board[r][c] == 1)
+                {
+                    cellBlock.setPosition(sf::Vector2f((startX + c * cellSize), (startY + r * cellSize)));
+
+                    window.draw(cellBlock);
+                }
+            }
+        }
 
 
         for (int r = 0; r < 4; ++r)
@@ -225,7 +212,7 @@ int main()
                     float pixelY = startY + ((pieceGridY + r) * cellSize);
 
                     cellBlock.setPosition(sf::Vector2f(pixelX, pixelY));
-                    window.draw(cellBlock);
+                    if (pixelY >= startY) window.draw(cellBlock);
                 }
             }
         }
@@ -257,3 +244,43 @@ void rotatePiece(int p[4][4])
     }
 
 }
+
+void lockPieceToBoard(int p[4][4], int gridX, int gridY, int board[20][10])
+{
+    for (int r = 0; r < 4; ++r)
+    {
+        for (int c = 0; c < 4; ++c)
+        {
+            int pieceX = gridX + c;
+            int pieceY = gridY + r;
+            if (p[r][c] == 1 && pieceY < 20 && pieceY >= 0 && pieceX < 10 && pieceX >= 0)
+            {
+                board[pieceY][pieceX] = 1;
+            }
+        }
+    }
+}
+bool checkCollision(const int p[4][4], int targetX, int targetY, const int board[20][10])
+{
+    for (int r = 0; r < 4; ++r)
+    {
+        for (int c = 0; c < 4; ++c)
+        {
+            if (p[r][c] == 1)
+            {
+                int nextX = targetX + c;
+                int nextY = targetY + r;
+
+                if (nextY >= 20 || nextX < 0 || nextX >= 10) return true;
+                else if (nextY >= 0)
+                {
+                    if (board[nextY][nextX] == 1) return true;
+                }
+
+            }
+        }
+    }
+    return false;
+}
+
+
